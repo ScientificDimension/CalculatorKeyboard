@@ -8,75 +8,67 @@
 
 import UIKit
 
-public protocol CalculatorDelegate: class {
-    func calculator(_ calculator: CalculatorKeyboard, didChangeValue value: String)
+public enum CalculatorKey: Int {
+    case zero = 1
+    case one = 2
+    case two = 3
+    case three = 4
+    case four = 5
+    case five = 6
+    case six = 7
+    case seven = 8
+    case eight = 9
+    case nine = 10
+    case decimal = 11
+    case sign = 12
+    case clear = 13
+    case delete = 14
+    case multiply = 15
+    case divide = 16
+    case subtract = 17
+    case add = 18
+    case equal = 19
 }
 
-enum CalculatorKey: Int {
-    case zero = 1
-    case one
-    case two
-    case three
-    case four
-    case five
-    case six
-    case seven
-    case eight
-    case nine
-    case decimal
-    case clear
-    case delete
-    case multiply
-    case divide
-    case subtract
-    case add
-    case equal
-}
+public typealias CalculatorKeyAction = (CalculatorKey) -> Void
 
 open class CalculatorKeyboard: UIView {
-    open weak var delegate: CalculatorDelegate?
-    open var numbersBackgroundColor = UIColor(white: 0.97, alpha: 1.0) {
-        didSet {
-            adjustLayout()
-        }
-    }
-    open var numbersTextColor = UIColor.black {
-        didSet {
-            adjustLayout()
-        }
-    }
-    open var operationsBackgroundColor = UIColor(white: 0.75, alpha: 1.0) {
-        didSet {
-            adjustLayout()
-        }
-    }
-    open var operationsTextColor = UIColor.white {
-        didSet {
-            adjustLayout()
-        }
-    }
-    open var equalBackgroundColor = UIColor(red:0.96, green:0.5, blue:0, alpha:1) {
-        didSet {
-            adjustLayout()
-        }
-    }
-    open var equalTextColor = UIColor.white {
-        didSet {
-            adjustLayout()
-        }
+    
+    // MARK: - colors
+    
+    var colorSchema = DefaultColors()
+    
+    // MARK: - handlers
+    
+    open var keyTapHandler: CalculatorKeyAction?
+    open var onKeyPressed: CalculatorKeyAction?
+    open var onKeyReleased: CalculatorKeyAction?
+
+    /// naming: https://blog.cocoafrog.de/2018/04/12/How-to-name-IBActions.html
+    @IBAction func press(_ sender: UIButton) {
+        let key = CalculatorKey(rawValue: sender.tag)!
+        sender.updateAppearance(.down, key)
+        onKeyPressed?(key)
     }
     
-    open var showDecimal = true {
-        didSet {
-            processor.automaticDecimal = !showDecimal
-            adjustLayout()
-        }
+    @IBAction func releaseInside(_ sender: UIButton) {
+        let key = CalculatorKey(rawValue: sender.tag)!
+        sender.updateAppearance(.up, key)
+        onKeyReleased?(key)
+        keyTapHandler?(key)
+    }
+
+    @IBAction func releaseOutside(_ sender: UIButton) {
+        let key = CalculatorKey(rawValue: sender.tag)!
+        sender.updateAppearance(.up, key)
+        onKeyReleased?(key)
     }
     
+    // MARK: - Calculator View
+
     var view: UIView!
-    fileprivate var processor = CalculatorProcessor()
     
-    @IBOutlet weak var zeroDistanceConstraint: NSLayoutConstraint!
+    // MARK: - Memory Management
     
     public required init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
@@ -90,14 +82,14 @@ open class CalculatorKeyboard: UIView {
     
     open override func awakeFromNib() {
         super.awakeFromNib()
-        adjustLayout()
+        configureColorSchema()
     }
     
     fileprivate func loadXib() {
         view = loadViewFromNib()
         view.frame = bounds
-        view.autoresizingMask = [UIViewAutoresizing.flexibleWidth, UIViewAutoresizing.flexibleHeight]
-        adjustLayout()
+        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        configureColorSchema()
         addSubview(view)
     }
     
@@ -105,65 +97,37 @@ open class CalculatorKeyboard: UIView {
         let bundle = Bundle(for: type(of: self))
         let nib = UINib(nibName: "CalculatorKeyboard", bundle: bundle)
         let view = nib.instantiate(withOwner: self, options: nil)[0] as! UIView
-        adjustButtonConstraint()
         return view
     }
     
-    fileprivate func adjustLayout() {
-        if viewWithTag(CalculatorKey.decimal.rawValue) != nil {
-            adjustButtonConstraint()
-        }
-        
-        for i in 1...CalculatorKey.decimal.rawValue {
-            if let button = self.view.viewWithTag(i) as? UIButton {
-                button.tintColor = numbersBackgroundColor
-                button.setTitleColor(numbersTextColor, for: UIControlState())
-            }
-        }
-        
-        for i in CalculatorKey.clear.rawValue...CalculatorKey.add.rawValue {
-            if let button = self.view.viewWithTag(i) as? UIButton {
-                button.tintColor = operationsBackgroundColor
-                button.setTitleColor(operationsTextColor, for: UIControlState())
-                button.tintColor = operationsTextColor
-            }
-        }
-        
-        if let button = self.view.viewWithTag(CalculatorKey.equal.rawValue) as? UIButton {
-            button.tintColor = equalBackgroundColor
-            button.setTitleColor(equalTextColor, for: UIControlState())
-        }
+    // MARK: - colorScheme
+    
+    private func configureColorSchema() {
+        tryConfigure(
+            keys: [ .zero, .one, .two, .three, .four, .five, .six, .seven, .eight, .nine, .decimal, .sign],
+            frontColor: colorSchema.white,
+            backColor: colorSchema.dark)
+        tryConfigure(
+            keys: [ .clear, .multiply, .divide, .delete, .subtract, .add, .equal],
+            frontColor: colorSchema.black,
+            backColor: colorSchema.gray)
     }
     
-    fileprivate func adjustButtonConstraint() {
-        let width = UIScreen.main.bounds.width / 4.0
-        zeroDistanceConstraint.constant = showDecimal ? width + 2.0 : 1.0
-        layoutIfNeeded()
-    }
-    
-    @IBAction func buttonPressed(_ sender: UIButton) {
-        switch (sender.tag) {
-        case (CalculatorKey.zero.rawValue)...(CalculatorKey.nine.rawValue):
-            let output = processor.storeOperand(sender.tag-1)
-            delegate?.calculator(self, didChangeValue: output)
-        case CalculatorKey.decimal.rawValue:
-            let output = processor.addDecimal()
-            delegate?.calculator(self, didChangeValue: output)
-        case CalculatorKey.clear.rawValue:
-            let output = processor.clearAll()
-            delegate?.calculator(self, didChangeValue: output)
-        case CalculatorKey.delete.rawValue:
-            let output = processor.deleteLastDigit()
-            delegate?.calculator(self, didChangeValue: output)
-        case (CalculatorKey.multiply.rawValue)...(CalculatorKey.add.rawValue):
-            let output = processor.storeOperator(sender.tag)
-            delegate?.calculator(self, didChangeValue: output)
-        case CalculatorKey.equal.rawValue:
-            let output = processor.computeFinalValue()
-            delegate?.calculator(self, didChangeValue: output)
-            break
-        default:
-            break
+    // MARK: - configurations
+
+    private func tryConfigure(
+        keys: Set<CalculatorKey>,
+        frontColor: UIColor,
+        backColor: UIColor) {
+        keys.map({ $0.rawValue }).forEach  {
+            guard let button = view.viewWithTag($0) as? UIButton else {
+                return
+            }
+            button.tintColor = frontColor
+            button.setTitleColor(frontColor, for: .normal)
+            button.setBackgroundImage(nil, for: .normal)
+            button.backgroundColor = backColor
+            button.titleLabel?.font = UIFont.systemFont(ofSize: 24, weight: .semibold)
         }
     }
 }
